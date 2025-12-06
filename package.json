@@ -1,0 +1,25 @@
+{
+  "name": "examen",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "preview": "vite preview --config vite.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leo2116/examen.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Leo2116/examen/issues"
+  },
+  "homepage": "https://github.com/Leo2116/examen#readme",
+  "devDependencies": {
+    "vite": "^7.2.4"
+  }
+}

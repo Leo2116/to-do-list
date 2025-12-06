@@ -4,68 +4,170 @@
     <meta charset="UTF-8">
     <title>Tablero Interactivo de Retos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js" defer></script>
+    <script src="app.js" defer></script>
 </head>
 <body>
-    <header>
-        <div class="header-content">
-            <h1>
-                <span class="material-symbols-outlined">lightbulb_outline</span>
-                Tablero Interactivo de Retos
-            </h1>
-            <button id="addRetoBtn">
-                <span class="material-symbols-outlined">add</span> Agregar Reto
-            </button>
+    <div id="app" class="page">
+        <div class="bg-shape bg-a"></div>
+        <div class="bg-shape bg-b"></div>
+        <div v-if="notificacion.texto" class="toast" :class="notificacion.tipo">
+            <span class="material-symbols-outlined" v-if="notificacion.tipo === 'ok'">check_circle</span>
+            <span class="material-symbols-outlined" v-else>error</span>
+            {{ notificacion.texto }}
         </div>
-    </header>
-    <section class="filters">
-        <select id="categoriaFilter">
-            <option value="">Todas las categorías</option>
-        </select>
-        <select id="dificultadFilter">
-            <option value="">Todas las dificultades</option>
-            <option value="bajo">Bajo</option>
-            <option value="medio">Medio</option>
-            <option value="alto">Alto</option>
-        </select>
-    </section>
-    <main>
-        <div id="retosGrid" class="grid"></div>
-    </main>
-
-    <div id="sidebarForm" class="sidebar-form hidden">
-        <form id="retoForm">
-            <div class="form-header">
-                <h2>Nuevo Reto</h2>
-                <button type="button" id="closeSidebarBtn">
-                    <span class="material-symbols-outlined">close</span>
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-mark">R</div>
+                <div>
+                    <p class="eyebrow">Retos diarios</p>
+                    <h1>Tablero de Innovación</h1>
+                </div>
+            </div>
+            <div class="top-actions">
+                <div class="stat-chip">
+                    <span class="material-symbols-outlined">workspace_premium</span>
+                    <div>
+                        <p class="eyebrow">Completados</p>
+                        <strong>{{ resumen.completados }} / {{ resumen.total }}</strong>
+                    </div>
+                </div>
+                <button class="primary" @click="abrirFormulario">
+                    <span class="material-symbols-outlined">add</span>
+                    Nuevo reto
                 </button>
             </div>
-            <label>Título: <input type="text" name="titulo" required></label>
-            <label>Descripción: <textarea name="descripcion" required></textarea></label>
-            <label>Categoría: <input type="text" name="categoria" required></label>
-            <label>Dificultad:
-                <select name="dificultad" required>
-                    <option value="bajo">Bajo</option>
-                    <option value="medio">Medio</option>
-                    <option value="alto">Alto</option>
-                </select>
-            </label>
-            <label>Estado:
-                <select name="estado" required>
-                    <option value="pendiente">Pendiente</option>
-                    <option value="en proceso">En Proceso</option>
-                    <option value="completado">Completado</option>
-                </select>
-            </label>
-            <div class="form-actions">
-                <button type="submit">Guardar</button>
-            </div>
-        </form>
-    </div>
+        </header>
 
-    <script src="app.js"></script>
+        <section class="filters-panel">
+            <div class="filter">
+                <label>Categoría</label>
+                <select v-model="filtros.categoria" @change="cargarRetos">
+                    <option value="">Todas</option>
+                    <option v-for="categoria in categoriasDisponibles" :key="categoria" :value="categoria">
+                        {{ categoria }}
+                    </option>
+                </select>
+            </div>
+            <div class="filter">
+                <label>Dificultad</label>
+                <div class="segmented">
+                    <button v-for="nivel in nivelesDificultad"
+                            :key="nivel.value"
+                            :class="{ active: filtros.dificultad === nivel.value }"
+                            @click="seleccionarDificultad(nivel.value)">
+                        <span class="material-symbols-outlined">{{ nivel.icon }}</span>
+                        {{ nivel.label }}
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <main class="content">
+            <div class="content-header">
+                <div>
+                    <p class="eyebrow">Estado en vivo</p>
+                    <h2>{{ retos.length ? 'Retos activos' : 'Aún no hay retos' }}</h2>
+                </div>
+                <div class="pill muted" v-if="cargando">
+                    <span class="material-symbols-outlined">progress_activity</span>
+                    Cargando
+                </div>
+            </div>
+
+            <div v-if="!retos.length && !cargando" class="empty-state">
+                <span class="material-symbols-outlined">event_busy</span>
+                <div>
+                    <h3>Sin retos todavía</h3>
+                    <p>Agrega tu primer reto y comienza a hacer seguimiento en el tablero.</p>
+                    <button class="primary ghost" @click="abrirFormulario">
+                        <span class="material-symbols-outlined">add</span>
+                        Crear reto
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid" v-else>
+                <article class="card" v-for="reto in retos" :key="reto.id">
+                    <header class="card-head">
+                        <div class="estado-chip" :class="estadoClase(reto.estado)">
+                            <span class="dot"></span>
+                            {{ formatearEstado(reto.estado) }}
+                        </div>
+                        <button class="icon-btn" @click="eliminarReto(reto.id)">
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
+                    </header>
+                    <h3 class="card-title">{{ reto.titulo }}</h3>
+                    <p class="card-desc">{{ reto.descripcion }}</p>
+                    <div class="pills">
+                        <span class="pill">
+                            <span class="material-symbols-outlined">category</span>
+                            {{ reto.categoria }}
+                        </span>
+                        <span class="pill">
+                            <span class="material-symbols-outlined">speed</span>
+                            {{ reto.dificultad }}
+                        </span>
+                    </div>
+                    <div class="card-footer">
+                        <label>Estado</label>
+                        <select v-model="reto.estado" @change="actualizarEstado(reto)">
+                            <option value="pendiente">Pendiente</option>
+                            <option value="en proceso">En proceso</option>
+                            <option value="completado">Completado</option>
+                        </select>
+                    </div>
+                </article>
+            </div>
+        </main>
+
+        <div class="sidebar" :class="{ open: mostrarFormulario }" :aria-hidden="!mostrarFormulario">
+            <form class="form" @submit.prevent="crearReto">
+                <div class="form-head">
+                    <div>
+                        <p class="eyebrow">Nuevo registro</p>
+                        <h3>Agregar reto</h3>
+                    </div>
+                    <button type="button" class="icon-btn ghost" @click="cerrarFormulario">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <label>Título
+                    <input type="text" v-model="nuevoReto.titulo" required placeholder="Ej. Diseñar un dashboard" />
+                </label>
+                <label>Descripción
+                    <textarea v-model="nuevoReto.descripcion" required placeholder="Detalles, entregables y responsables"></textarea>
+                </label>
+                <label>Categoría
+                    <input type="text" v-model="nuevoReto.categoria" required placeholder="Producto, UX, Data..." />
+                </label>
+                <label>Dificultad
+                    <select v-model="nuevoReto.dificultad" required>
+                        <option value="bajo">Bajo</option>
+                        <option value="medio">Medio</option>
+                        <option value="alto">Alto</option>
+                    </select>
+                </label>
+                <label>Estado
+                    <select v-model="nuevoReto.estado" required>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="en proceso">En proceso</option>
+                        <option value="completado">Completado</option>
+                    </select>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="primary" :disabled="guardando">
+                        <span class="material-symbols-outlined">rocket_launch</span>
+                        {{ guardando ? 'Guardando...' : 'Guardar reto' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+        <div class="scrim" v-if="mostrarFormulario" @click="cerrarFormulario"></div>
+    </div>
 </body>
 </html>

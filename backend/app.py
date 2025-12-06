@@ -1,6 +1,10 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from models import get_db_connection, init_db
+
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 
 app = Flask(__name__)
 CORS(app)
@@ -8,6 +12,18 @@ CORS(app)
 # Llamar a la función de inicialización de la base de datos directamente
 # Esto reemplaza el obsoleto @app.before_first_request
 init_db()
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+@app.route('/styles.css')
+def serve_styles():
+    return send_from_directory(FRONTEND_DIR, 'styles.css')
+
+@app.route('/app.js')
+def serve_app_js():
+    return send_from_directory(FRONTEND_DIR, 'app.js')
 
 @app.route('/retos', methods=['GET'])
 def get_retos():
@@ -37,18 +53,28 @@ def get_retos():
 
 @app.route('/retos', methods=['POST'])
 def create_reto():
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    required_fields = ['titulo', 'descripcion', 'categoria', 'dificultad', 'estado']
+    if not all(field in data and str(data[field]).strip() for field in required_fields):
+        return jsonify({'error': 'Faltan campos obligatorios'}), 400
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO retos (titulo, descripcion, categoria, dificultad, estado)
-        VALUES (%s, %s, %s, %s, %s) RETURNING id
-    """, (data['titulo'], data['descripcion'], data['categoria'], data['dificultad'], data['estado']))
-    reto_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'id': reto_id}), 201
+    try:
+        cur.execute("""
+            INSERT INTO retos (titulo, descripcion, categoria, dificultad, estado)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (data['titulo'], data['descripcion'], data['categoria'], data['dificultad'], data['estado']))
+        reto_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({'id': reto_id}), 201
+    except Exception as exc:
+        conn.rollback()
+        # Responder con el detalle del error para depurar desde el frontend
+        return jsonify({'error': str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/retos/<int:reto_id>', methods=['PUT'])
 def update_reto(reto_id):

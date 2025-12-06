@@ -1,108 +1,162 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const retosGrid = document.getElementById('retosGrid');
-    const sidebarForm = document.getElementById('sidebarForm');
-    const retoForm = document.getElementById('retoForm');
-    const addRetoBtn = document.getElementById('addRetoBtn');
-    const closeSidebarBtn = document.getElementById('closeSidebarBtn');
-    const categoriaFilter = document.getElementById('categoriaFilter');
-    const dificultadFilter = document.getElementById('dificultadFilter');
+const { createApp } = Vue;
 
-    // Función para obtener y mostrar los retos
-    const obtenerRetos = async (filtros = {}) => {
-        let url = 'http://127.0.0.1:5000/retos';
-        const params = new URLSearchParams(filtros);
-        if (params.toString()) {
-            url += '?' + params.toString();
+createApp({
+    data() {
+        return {
+            retos: [],
+            filtros: {
+                categoria: '',
+                dificultad: ''
+            },
+            nuevoReto: {
+                titulo: '',
+                descripcion: '',
+                categoria: '',
+                dificultad: 'medio',
+                estado: 'pendiente'
+            },
+            mostrarFormulario: false,
+            guardando: false,
+            cargando: false,
+            notificacion: { tipo: '', texto: '' },
+            baseUrl: '/retos',
+            nivelesDificultad: [
+                { value: '', label: 'Todas', icon: 'all_inclusive' },
+                { value: 'bajo', label: 'Baja', icon: 'hiking' },
+                { value: 'medio', label: 'Media', icon: 'stacked_line_chart' },
+                { value: 'alto', label: 'Alta', icon: 'flash_on' }
+            ]
+        };
+    },
+    computed: {
+        categoriasDisponibles() {
+            const categorias = new Set(this.retos.map(reto => reto.categoria));
+            return Array.from(categorias).filter(Boolean).sort();
+        },
+        resumen() {
+            const completados = this.retos.filter(r => r.estado === 'completado').length;
+            return { completados, total: this.retos.length };
         }
+    },
+    methods: {
+        async cargarRetos() {
+            this.cargando = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.filtros.categoria) params.append('categoria', this.filtros.categoria);
+                if (this.filtros.dificultad) params.append('dificultad', this.filtros.dificultad);
 
-        const respuesta = await fetch(url);
-        const retos = await respuesta.json();
+                const url = params.toString() ? `${this.baseUrl}?${params.toString()}` : this.baseUrl;
+                const respuesta = await fetch(url);
+                this.retos = await respuesta.json();
+            } catch (error) {
+                console.error('Error al cargar los retos', error);
+                this.notificar('error', 'No se pudieron cargar los retos');
+            } finally {
+                this.cargando = false;
+            }
+        },
+        abrirFormulario() {
+            this.mostrarFormulario = true;
+        },
+        cerrarFormulario() {
+            this.mostrarFormulario = false;
+        },
+        limpiarFormulario() {
+            this.nuevoReto = {
+                titulo: '',
+                descripcion: '',
+                categoria: '',
+                dificultad: 'medio',
+                estado: 'pendiente'
+            };
+        },
+        async crearReto() {
+            if (!this.nuevoReto.titulo.trim() || !this.nuevoReto.descripcion.trim() || !this.nuevoReto.categoria.trim()) {
+                this.notificar('error', 'Completa título, descripción y categoría');
+                return;
+            }
+            this.guardando = true;
+            try {
+                const respuesta = await fetch(this.baseUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(this.nuevoReto)
+                });
 
-        retosGrid.innerHTML = '';
-        retos.forEach(reto => {
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.innerHTML = `
-                <div class="card-title">${reto.titulo}</div>
-                <div class="card-desc">${reto.descripcion}</div>
-                <div class="card-meta">
-                    <span>Categoría: ${reto.categoria}</span>
-                    <span>Dificultad: ${reto.dificultad}</span>
-                </div>
-                <div class="card-actions">
-                    <select class="estado-select" data-id="${reto.id}">
-                        <option value="pendiente" ${reto.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
-                        <option value="en proceso" ${reto.estado === 'en proceso' ? 'selected' : ''}>En Proceso</option>
-                        <option value="completado" ${reto.estado === 'completado' ? 'selected' : ''}>Completado</option>
-                    </select>
-                    <button class="delete-btn" data-id="${reto.id}">
-                        <span class="material-symbols-outlined">delete</span>
-                    </button>
-                </div>
-            `;
-            retosGrid.appendChild(card);
-        });
-    };
+                if (!respuesta.ok) {
+                    const msg = await respuesta.text();
+                    let detail = msg;
+                    try {
+                        const parsed = JSON.parse(msg);
+                        detail = parsed.error || parsed.message || msg;
+                    } catch (_) {}
+                    throw new Error(detail || 'No se pudo guardar');
+                }
 
-    // Eventos para abrir y cerrar el panel lateral del formulario
-    addRetoBtn.addEventListener('click', () => {
-        sidebarForm.classList.add('open');
-    });
-
-    closeSidebarBtn.addEventListener('click', () => {
-        sidebarForm.classList.remove('open');
-    });
-
-    // Evento para enviar el formulario de nuevo reto
-    retoForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(retoForm);
-        const nuevoReto = Object.fromEntries(formData.entries());
-
-        await fetch('http://127.0.0.1:5000/retos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nuevoReto)
-        });
-
-        sidebarForm.classList.remove('open');
-        retoForm.reset();
-        obtenerRetos();
-    });
-
-    // Evento para los filtros de categoría y dificultad
-    categoriaFilter.addEventListener('change', () => {
-        obtenerRetos({ categoria: categoriaFilter.value, dificultad: dificultadFilter.value });
-    });
-
-    dificultadFilter.addEventListener('change', () => {
-        obtenerRetos({ categoria: categoriaFilter.value, dificultad: dificultadFilter.value });
-    });
-    
-    // Evento para el cambio de estado y eliminación
-    retosGrid.addEventListener('change', async (e) => {
-        if (e.target.classList.contains('estado-select')) {
-            const retoId = e.target.dataset.id;
-            const nuevoEstado = e.target.value;
-            await fetch(`http://127.0.0.1:5000/retos/${retoId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ estado: nuevoEstado })
-            });
-            obtenerRetos();
+                this.limpiarFormulario();
+                this.cerrarFormulario();
+                await this.cargarRetos();
+                this.notificar('ok', 'Reto guardado');
+            } catch (error) {
+                console.error('Error al crear el reto', error);
+                this.notificar('error', error.message || 'No se pudo guardar el reto');
+            } finally {
+                this.guardando = false;
+            }
+        },
+        async actualizarEstado(reto) {
+            try {
+                const respuesta = await fetch(`${this.baseUrl}/${reto.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: reto.estado })
+                });
+                if (!respuesta.ok) {
+                    throw new Error('No se pudo actualizar el estado');
+                }
+            } catch (error) {
+                console.error('Error al actualizar el reto', error);
+                this.notificar('error', 'No se pudo actualizar el estado');
+            }
+        },
+        async eliminarReto(retoId) {
+            if (!confirm('¿Seguro que deseas eliminar este reto?')) return;
+            try {
+                const respuesta = await fetch(`${this.baseUrl}/${retoId}`, { method: 'DELETE' });
+                if (!respuesta.ok) {
+                    throw new Error('No se pudo eliminar');
+                }
+                this.retos = this.retos.filter(reto => reto.id !== retoId);
+                this.notificar('ok', 'Reto eliminado');
+            } catch (error) {
+                console.error('Error al eliminar el reto', error);
+                this.notificar('error', 'No se pudo eliminar el reto');
+            }
+        },
+        estadoClase(estado) {
+            return `estado-${(estado || '').replace(/\s+/g, '-')}`;
+        },
+        formatearEstado(estado) {
+            if (!estado) return '';
+            return estado.charAt(0).toUpperCase() + estado.slice(1);
+        },
+        seleccionarDificultad(valor) {
+            this.filtros.dificultad = valor === this.filtros.dificultad ? '' : valor;
+            this.cargarRetos();
+        },
+        notificar(tipo, texto) {
+            this.notificacion = { tipo, texto };
+            clearTimeout(this._toastTimer);
+            this._toastTimer = setTimeout(() => {
+                this.notificacion = { tipo: '', texto: '' };
+            }, 2800);
         }
-    });
-
-    retosGrid.addEventListener('click', async (e) => {
-        if (e.target.closest('.delete-btn')) {
-            const retoId = e.target.closest('.delete-btn').dataset.id;
-            await fetch(`http://127.0.0.1:5000/retos/${retoId}`, {
-                method: 'DELETE'
-            });
-            obtenerRetos();
-        }
-    });
-
-    // Cargar los retos al iniciar la página
-    obtenerRetos();
-});
+    },
+    mounted() {
+        this.cargarRetos();
+    }
+}).mount('#app');
